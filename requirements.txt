@@ -7,3 +7,5 @@ joblib
 numpy
 pandas
 pillow
+streamlit-webrtc
+av
