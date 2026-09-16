@@ -57,7 +57,7 @@ def show_prediction_column(title, model, scaled_feat):
 
 @st.cache_resource
 def load_artifacts():
-    """Memuat model SVM dan Scaler dengan mmap untuk efisiensi memori."""
+    """Memuat model SVM dan Scaler."""
     return {
         "antro_standalone": {
             "model": joblib.load("models/antro_svm.pkl"),
@@ -111,19 +111,11 @@ artifacts = load_artifacts()
 class LiveEthnicClassifier(VideoProcessorBase):
     def __init__(self):
         self.frame_count = 0
-
         self.last_results = []
-
-        self.last_results = []  # Menyimpan hasil prediksi antar-frame
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img_bgr = frame.to_ndarray(format="bgr24")
         self.frame_count += 1
-
-
-        # Klasifikasi dieksekusi per 5 frame agar video tetap mulus
-
-        # Memproses klasifikasi setiap 5 frame sekali agar video tetap mulus (tidak lag)
 
         if self.frame_count % 5 == 0:
             self.last_results = []
@@ -138,9 +130,6 @@ class LiveEthnicClassifier(VideoProcessorBase):
                     local_lms = get_all_faces_landmarks(face_crop)
                     if not local_lms:
                         continue
-
-
-                    # Ekstraksi fitur ringan (LBP + Antropometri) untuk efisiensi real-time
 
                     try:
                         antro = extract_antropometri(local_lms[0])
@@ -158,11 +147,6 @@ class LiveEthnicClassifier(VideoProcessorBase):
                         pass
 
             gc.collect()
-
-
-        # Render bounding box & label di layar video
-
-        # Gambar bounding box dan label prediksi di setiap frame
 
         for (x1, y1, x2, y2), text in self.last_results:
             cv2.rectangle(img_bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -248,12 +232,6 @@ if uploaded is not None and input_mode != "Live Webcam":
             gc.collect()
 
             with st.spinner(f"Mengekstrak fitur Wajah #{idx}..."):
-                antro = extract_antropometri(lms_target)
-                lbp_ycbcr = extract_lbp_ycbcr(face_crop)
-                gabor = extract_gabor(face_crop)
-                hog_feat = extract_hog(face_crop)
-
-            with st.spinner(f"Mengekstrak fitur Wajah #{idx}..."):
                 antro = extract_antropometri(lms_target)              # 10 fitur
                 antro13 = extract_antropometri13(lms_target)          # 13 fitur
                 pure_lbp = extract_pure_lbp_grid(face_crop)           # 2304 fitur (Grayscale)
@@ -267,7 +245,7 @@ if uploaded is not None and input_mode != "Live Webcam":
             feat_a = np.concatenate([lbp_ycbcr, antro]).reshape(1, -1)
             feat_b = np.concatenate([lbp_ycbcr, gabor]).reshape(1, -1)
 
-            # Menampilkan 6 Skema Model Prediksi
+            # Menampilkan 6 Skema Model Prediksi Berdampingan
             col1, col2, col3, col4, col5, col6 = st.columns(6)
 
             with col1:
@@ -293,10 +271,5 @@ if uploaded is not None and input_mode != "Live Webcam":
             with col6:
                 scaled = artifacts["gabor_lbp_ycbcr"]["scaler"].transform(feat_b)
                 show_prediction_column("Gabor + LBP", artifacts["gabor_lbp_ycbcr"]["model"], scaled)
-
-            gc.collect()
-
-                scaled_all = artifacts["all_fusion"]["scaler"].transform(feat_all)
-                show_prediction_column("Fusi Lengkap", artifacts["all_fusion"]["model"], scaled_all)
 
             gc.collect()

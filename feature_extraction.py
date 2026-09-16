@@ -17,8 +17,7 @@ FACE_SIZE = (510, 510)
 
 mp_face_mesh = mp.solutions.face_mesh
 
-# PENTING: refine_landmarks=True diaktifkan agar menghasilkan 478 landmark
-# termasuk titik 468 & 473 (iris mata) yang dibutuhkan untuk Antropometri 13 Fitur
+# refine_landmarks=True wajib aktif agar menghasilkan 478 landmark (termasuk iris pupil)
 face_mesh = mp_face_mesh.FaceMesh(
     static_image_mode=True,
     max_num_faces=5,
@@ -51,7 +50,6 @@ def get_all_faces_landmarks(image_bgr):
 def extract_antropometri(landmarks):
     """
     10 Fitur Antropometri Standar (FITUR_ANTROPOMETRI_10FITUR.csv).
-    Urutan persis dengan kode training.
     """
     def euclidean(p1, p2):
         x1, y1 = landmarks[p1]
@@ -76,10 +74,6 @@ def extract_antropometri13(landmarks):
     """
     13 Fitur Antropometri (ANTHROPOMETRY_13_FEATURES.csv).
     Menggunakan 478 landmark (termasuk iris pupil 468 & 473).
-    Urutan fitur persis dengan kode training:
-    Mandible_Width, Upper_Vermilion, Lower_Vermilion, Interpupillary,
-    Intercanthal, Biocular, Nasal_Width, Nasal_Height, Nasal_Length,
-    Mouth_Width, Face_Width, Face_Height, Nasal_Parenthesis_Width.
     """
     def euclidean(p1, p2):
         x1, y1 = landmarks[p1]
@@ -107,7 +101,6 @@ def extract_pure_lbp_grid(image_bgr, grid_rows=3, grid_cols=3, radius=1, n_point
     """
     Pure LBP Grid 3x3 Grayscale (PURE_LBP_GRID3x3_2304_FEATURES.csv).
     Total: 9 sel x 256 bin histogram = 2304 fitur.
-    Digunakan khusus untuk model 'lbp_svm.pkl'.
     """
     image_gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
     lbp_matrix = local_binary_pattern(image_gray, n_points, radius, method='default')
@@ -131,7 +124,6 @@ def extract_pure_lbp_grid(image_bgr, grid_rows=3, grid_cols=3, radius=1, n_point
 def extract_lbp_ycbcr(image_bgr, grid_rows=3, grid_cols=3, color_bins=32, radius=1, n_points=8):
     """
     LBP Grid 3x3 di kanal Y (2304 fitur) + histogram Cb & Cr (64 fitur) -> total 2368 fitur.
-    Digunakan untuk model fusi 'lbp_ycbcr_antro' dan 'gabor_lbp_ycbcr'.
     """
     image_ycbcr = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2YCrCb)
     Y_channel, Cb_channel, Cr_channel = cv2.split(image_ycbcr)
