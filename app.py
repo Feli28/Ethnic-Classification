@@ -5,13 +5,6 @@ import joblib
 from PIL import Image
 import mediapipe as mp
 
-from streamlit_webrtc import (
-    webrtc_streamer,
-    VideoProcessorBase,
-    WebRtcMode
-)
-
-
 from feature_extraction import (
     detect_landmarks,
     extract_antropometri,
@@ -22,6 +15,13 @@ from feature_extraction import (
 )
 
 
+# =====================================================
+# SIZE SESUAI TRAINING
+# =====================================================
+
+FACE_SIZE = (510,510)
+
+
 
 # =====================================================
 # LOAD MODEL
@@ -30,69 +30,69 @@ from feature_extraction import (
 @st.cache_resource
 def load_models():
 
-    models={}
+    models = {}
 
 
-    models["LBP"]={
-        "model":joblib.load(
+    models["LBP"] = {
+        "model": joblib.load(
             "models/lbp_svm.pkl"
         ),
-        "scaler":joblib.load(
+        "scaler": joblib.load(
             "models/lbp_scaler.pkl"
         )
     }
 
 
 
-    models["Antropometri 10 Multi Angle"]={
-        "model":joblib.load(
+    models["Antropometri 10 Multi Angle"] = {
+        "model": joblib.load(
             "models/antro_svm.pkl"
         ),
-        "scaler":joblib.load(
+        "scaler": joblib.load(
             "models/antro_scaler.pkl"
         )
     }
 
 
 
-    models["Antro Frontal Angry"]={
-        "model":joblib.load(
+    models["Antro Frontal Angry"] = {
+        "model": joblib.load(
             "models/antropometri_angry_frontal_svm.pkl"
         ),
-        "scaler":joblib.load(
+        "scaler": joblib.load(
             "models/antropometri_angry_frontal_scaler.pkl"
         )
     }
 
 
 
-    models["Antropometri 13 Angry Frontal"]={
-        "model":joblib.load(
+    models["Antropometri 13 Angry Frontal"] = {
+        "model": joblib.load(
             "models/antropometri13_angry_frontal_svm.pkl"
         ),
-        "scaler":joblib.load(
+        "scaler": joblib.load(
             "models/antropometri13_angry_frontal_scaler.pkl"
         )
     }
 
 
 
-    models["LBP YCbCr + Antropometri"]={
-        "model":joblib.load(
+    models["LBP YCbCr + Antropometri"] = {
+        "model": joblib.load(
             "models/lbp_ycbcr_antro_svm.pkl"
         ),
-        "scaler":joblib.load(
+        "scaler": joblib.load(
             "models/lbp_ycbcr_antro_scaler.pkl"
         )
     }
 
 
 
-    models["LBP YCbCr + Gabor"]={
-        "model":joblib.load(
+    models["LBP YCbCr + Gabor"] = {
+        "model": joblib.load(
             "models/gabor_lbp_ycbcr_svm.pkl"
         ),
-        "scaler":joblib.load(
+        "scaler": joblib.load(
             "models/gabor_lbp_ycbcr_scaler.pkl"
         )
     }
@@ -103,7 +103,7 @@ def load_models():
 
 
 # =====================================================
-# FACE DETECTION CROP
+# FACE DETECTION
 # =====================================================
 
 mp_detection = mp.solutions.face_detection
@@ -118,116 +118,96 @@ face_detector = mp_detection.FaceDetection(
 
 def crop_face(image):
 
-    rgb=cv2.cvtColor(
+    rgb = cv2.cvtColor(
         image,
         cv2.COLOR_BGR2RGB
     )
 
 
-    result=face_detector.process(
+    result = face_detector.process(
         rgb
     )
 
 
     if not result.detections:
-        return None,None
+        return None
 
 
 
-    detection=result.detections[0]
+    detection = result.detections[0]
 
 
-    bbox=detection.location_data.relative_bounding_box
+    bbox = detection.location_data.relative_bounding_box
 
 
-    h,w=image.shape[:2]
+    h,w = image.shape[:2]
 
 
-    x=int(bbox.xmin*w)
-    y=int(bbox.ymin*h)
+    x = int(bbox.xmin*w)
+    y = int(bbox.ymin*h)
 
-    bw=int(bbox.width*w)
-    bh=int(bbox.height*h)
-
-
-
-    # =========================
-    # TAMBAH MARGIN
-    # =========================
-
-    margin_x=int(bw*0.25)
-    margin_y=int(bh*0.35)
+    bw = int(bbox.width*w)
+    bh = int(bbox.height*h)
 
 
 
-    x1=max(
+    # =============================
+    # MARGIN MIRIP DATASET
+    # =============================
+
+    margin_x = int(bw*0.25)
+
+    margin_y = int(bh*0.35)
+
+
+
+    x1 = max(
         0,
         x-margin_x
     )
 
-    y1=max(
+    y1 = max(
         0,
         y-margin_y
     )
 
 
-    x2=min(
+    x2 = min(
         w,
         x+bw+margin_x
     )
 
 
-    y2=min(
+    y2 = min(
         h,
         y+bh+margin_y
     )
 
 
-    crop=image[
+
+    crop = image[
         y1:y2,
         x1:x2
     ]
 
 
-
-    box=(
-        x1,
-        y1,
-        x2,
-        y2
-    )
-
-
-    return crop,box
+    return crop
 
 
 
 # =====================================================
-# DRAW BOX
+# RESIZE SESUAI TRAINING
 # =====================================================
 
-def draw_box(image,box):
+def resize_face(image):
 
-    if box is None:
-        return image
-
-
-    x1,y1,x2,y2=box
-
-
-    img=image.copy()
-
-
-    cv2.rectangle(
-        img,
-        (x1,y1),
-        (x2,y2),
-        (0,255,0),
-        2
+    image = cv2.resize(
+        image,
+        FACE_SIZE,
+        interpolation=cv2.INTER_AREA
     )
 
-
-    return img
+    return image
 
 
 
@@ -237,21 +217,26 @@ def draw_box(image,box):
 
 def extract_features(image):
 
-
-    features={}
-
+    features = {}
 
 
-    lm468=detect_landmarks(
+
+    # LANDMARK 468
+
+    lm468 = detect_landmarks(
         image,
         mode="468"
     )
 
 
-    lm478=detect_landmarks(
+
+    # LANDMARK 478
+
+    lm478 = detect_landmarks(
         image,
         mode="478"
     )
+
 
 
     if len(lm468)==0 or len(lm478)==0:
@@ -259,52 +244,57 @@ def extract_features(image):
 
 
 
-    lm468=lm468[0]
-    lm478=lm478[0]
+    lm468 = lm468[0]
+
+    lm478 = lm478[0]
 
 
 
-    antro10=extract_antropometri(
+    # ANTRO
+
+    antro10 = extract_antropometri(
         lm468
     )
 
 
-    antro13=extract_antropometri13(
+    antro13 = extract_antropometri13(
         lm478
     )
 
 
 
-    lbp=extract_lbp(
+    # TEXTURE
+
+    lbp = extract_lbp(
         image
     )
 
 
-    lbp_ycbcr=extract_lbp_ycbcr(
+    lbp_ycbcr = extract_lbp_ycbcr(
         image
     )
 
 
-    gabor=extract_gabor(
+    gabor = extract_gabor(
         image
     )
 
 
 
-    features["LBP"]=lbp
+    features["LBP"] = lbp
 
 
-    features["Antropometri 10 Multi Angle"]=antro10
+    features["Antropometri 10 Multi Angle"] = antro10
 
 
-    features["Antro Frontal Angry"]=antro10
+    features["Antro Frontal Angry"] = antro10
 
 
-    features["Antropometri 13 Angry Frontal"]=antro13
+    features["Antropometri 13 Angry Frontal"] = antro13
 
 
 
-    features["LBP YCbCr + Antropometri"]=np.concatenate(
+    features["LBP YCbCr + Antropometri"] = np.concatenate(
         [
             lbp_ycbcr,
             antro10
@@ -313,7 +303,7 @@ def extract_features(image):
 
 
 
-    features["LBP YCbCr + Gabor"]=np.concatenate(
+    features["LBP YCbCr + Gabor"] = np.concatenate(
         [
             lbp_ycbcr,
             gabor
@@ -321,34 +311,34 @@ def extract_features(image):
     )
 
 
+
     return features
 
-
-
-
 # =====================================================
-# PREDICT
+# PREDICT SVM
 # =====================================================
 
-def predict(model_data,feature):
+def predict(
+    model_data,
+    feature
+):
+
+    model = model_data["model"]
+
+    scaler = model_data["scaler"]
 
 
-    model=model_data["model"]
-    scaler=model_data["scaler"]
-
-
-
-    feature=feature.reshape(
+    feature = feature.reshape(
         1,-1
     )
 
 
-    feature_scaled=scaler.transform(
+    feature_scaled = scaler.transform(
         feature
     )
 
 
-    prediction=model.predict(
+    prediction = model.predict(
         feature_scaled
     )[0]
 
@@ -358,41 +348,8 @@ def predict(model_data,feature):
 
 
 # =====================================================
-# WEBCAM PROCESSOR
+# STREAMLIT CONFIG
 # =====================================================
-
-
-class VideoProcessor(VideoProcessorBase):
-
-    def recv(self,frame):
-
-        img=frame.to_ndarray(
-            format="bgr24"
-        )
-
-
-        crop,box=crop_face(
-            img
-        )
-
-
-        img=draw_box(
-            img,
-            box
-        )
-
-
-        return frame.from_ndarray(
-            img,
-            format="bgr24"
-        )
-
-
-
-# =====================================================
-# STREAMLIT UI
-# =====================================================
-
 
 st.set_page_config(
     page_title="Ethnicity Classification",
@@ -407,106 +364,125 @@ st.title(
 
 
 st.write(
-    "SVM RBF - Landmark + Texture Feature"
+    "SVM RBF - Landmark + Texture Feature Pipeline"
 )
 
 
 
-option=st.radio(
-    "Input gambar",
+# =====================================================
+# INPUT MODE
+# =====================================================
+
+option = st.radio(
+    "Pilih Input",
     [
         "Upload Foto",
-        "Webcam",
         "Ambil Foto"
     ]
 )
 
 
 
-image_bgr=None
+image_bgr = None
 
 
 
-# =============================
-# UPLOAD
-# =============================
+# =====================================================
+# UPLOAD FOTO
+# =====================================================
 
-if option=="Upload Foto":
+if option == "Upload Foto":
 
 
-    file=st.file_uploader(
-        "Upload wajah",
+    file = st.file_uploader(
+        "Upload gambar wajah",
         type=[
             "jpg",
-            "png",
-            "jpeg"
+            "jpeg",
+            "png"
         ]
     )
 
 
     if file:
 
-        img=Image.open(file)
 
-        img_np=np.array(img)
+        image = Image.open(
+            file
+        )
 
 
-        image_bgr=cv2.cvtColor(
-            img_np,
+        image_np = np.array(
+            image
+        )
+
+
+        image_bgr = cv2.cvtColor(
+            image_np,
             cv2.COLOR_RGB2BGR
         )
 
 
 
-# =============================
-# CAMERA
-# =============================
+# =====================================================
+# CAMERA INPUT
+# =====================================================
 
-elif option=="Ambil Foto":
+elif option == "Ambil Foto":
 
 
-    camera=st.camera_input(
-        "Ambil foto"
+    camera = st.camera_input(
+        "Ambil foto wajah"
     )
 
 
     if camera:
 
-        img=Image.open(camera)
 
-        img_np=np.array(img)
+        image = Image.open(
+            camera
+        )
 
-        image_bgr=cv2.cvtColor(
-            img_np,
+
+        image_np = np.array(
+            image
+        )
+
+
+        image_bgr = cv2.cvtColor(
+            image_np,
             cv2.COLOR_RGB2BGR
         )
 
 
 
-# =============================
-# WEBCAM
-# =============================
-
-else:
-
-
-    webrtc_streamer(
-        key="camera",
-        mode=WebRtcMode.SENDRECV,
-        video_processor_factory=VideoProcessor
-    )
-
-
-
 # =====================================================
-# PREDIKSI
+# PROCESS IMAGE
 # =====================================================
-
 
 if image_bgr is not None:
 
 
-    crop,box=crop_face(
+    st.subheader(
+        "Gambar Input"
+    )
+
+
+    st.image(
+        cv2.cvtColor(
+            image_bgr,
+            cv2.COLOR_BGR2RGB
+        ),
+        width=300
+    )
+
+
+
+    # =========================
+    # CROP + MARGIN
+    # =========================
+
+    crop = crop_face(
         image_bgr
     )
 
@@ -514,12 +490,28 @@ if image_bgr is not None:
 
     if crop is None:
 
+
         st.error(
-            "Wajah tidak ditemukan"
+            "Wajah tidak terdeteksi"
         )
 
 
     else:
+
+
+        # =========================
+        # RESIZE 510x510
+        # =========================
+
+        crop = resize_face(
+            crop
+        )
+
+
+
+        st.subheader(
+            "Crop Setelah Preprocessing"
+        )
 
 
         st.image(
@@ -531,12 +523,17 @@ if image_bgr is not None:
         )
 
 
+
+        # =========================
+        # FEATURE EXTRACTION
+        # =========================
+
         with st.spinner(
             "Ekstraksi fitur..."
         ):
 
 
-            features=extract_features(
+            features = extract_features(
                 crop
             )
 
@@ -544,37 +541,93 @@ if image_bgr is not None:
 
         if features is None:
 
+
             st.error(
-                "Landmark gagal dideteksi"
+                "Landmark wajah gagal dideteksi"
             )
 
 
         else:
 
 
-            models=load_models()
-
-
-
             st.success(
-                "Prediksi selesai"
+                "Feature extraction selesai"
             )
 
 
-            for name in models:
+
+            models = load_models()
 
 
-                result=predict(
-                    models[name],
-                    features[name]
+
+            st.divider()
+
+
+            st.subheader(
+                "Hasil Prediksi Semua Model"
+            )
+
+
+
+            # =====================================================
+            # GRID 3 x 2
+            # =====================================================
+
+            model_names = list(
+                models.keys()
+            )
+
+
+
+            for i in range(
+                0,
+                len(model_names),
+                3
+            ):
+
+
+                cols = st.columns(
+                    3
                 )
 
 
-                st.subheader(
-                    name
-                )
+                for col,name in zip(
+                    cols,
+                    model_names[i:i+3]
+                ):
 
 
-                st.success(
-                    result
-                )
+                    with col:
+
+
+                        result = predict(
+                            models[name],
+                            features[name]
+                        )
+
+
+
+                        st.markdown(
+                            f"""
+                            <div style="
+                            border:1px solid #cccccc;
+                            border-radius:15px;
+                            padding:15px;
+                            text-align:center;
+                            margin-bottom:15px;
+                            ">
+
+                            <h4>
+                            {name}
+                            </h4>
+
+                            <h2 style="
+                            color:#008000;
+                            ">
+                            {result}
+                            </h2>
+
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
