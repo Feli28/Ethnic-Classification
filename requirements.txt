@@ -2,10 +2,12 @@ streamlit
 streamlit-webrtc
 av
 opencv-python-headless
-mediapipe
+mediapipe == 0.10.21
 scikit-learn
 scikit-image
 joblib
 numpy
 pandas
 pillow
+streamlit-webrtc
+av
