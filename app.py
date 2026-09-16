@@ -42,30 +42,30 @@ def load_models():
 
         "Antropometri Multi-Angle": {
             "model": joblib.load(
-                "models/antropometri_svm.pkl"
+                "models/antro_svm.pkl"
             ),
             "scaler": joblib.load(
-                "models/antropometri_scaler.pkl"
+                "models/antro_scaler.pkl"
             )
         },
 
 
         "Antro Frontal Angry": {
             "model": joblib.load(
-                "models/antro_frontal_svm.pkl"
+                "models/antropometri_angry_frontal_svm.pkl"
             ),
             "scaler": joblib.load(
-                "models/antro_frontal_scaler.pkl"
+                "models/antropometri_angry_frontal_scaler.pkl"
             )
         },
 
 
         "Antropometri 13 Angry": {
             "model": joblib.load(
-                "models/antropometri13_svm.pkl"
+                "models/antropometri13_angry_frontal_svm.pkl"
             ),
             "scaler": joblib.load(
-                "models/antropometri13_scaler.pkl"
+                "models/antropometri13_angry_frontal_scaler.pkl"
             )
         },
 
@@ -82,10 +82,10 @@ def load_models():
 
         "LBP YCbCr + Gabor": {
             "model": joblib.load(
-                "models/lbp_ycbcr_gabor_svm.pkl"
+                "models/gabor_lbp_ycbcr_svm.pkl"
             ),
             "scaler": joblib.load(
-                "models/lbp_ycbcr_gabor_scaler.pkl"
+                "models/gabor_lbp_ycbcr_scaler.pkl"
             )
         }
 
