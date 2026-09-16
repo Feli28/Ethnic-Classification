@@ -1,29 +1,36 @@
 """
-Modul ekstraksi fitur - disesuaikan PERSIS dengan kode training kamu
-(HOG, LBP-YCbCr, Gabor, Antropometri).
+Modul ekstraksi fitur - disesuaikan PERSIS dengan pipeline training Kaggle:
+- Pure LBP Grid 3x3 (Grayscale - 2304 fitur)
+- LBP-YCbCr (2368 fitur)
+- Antropometri Standar (10 fitur)
+- Antropometri 13 Fitur (478 landmark dengan refine_landmarks=True)
+- Gabor (32 fitur)
 """
 
 import cv2
 import numpy as np
 import mediapipe as mp
-from skimage.feature import local_binary_pattern, hog
+from skimage.feature import local_binary_pattern
 
 # Ukuran standar citra sesuai training pipeline
 FACE_SIZE = (510, 510)
 
 mp_face_mesh = mp.solutions.face_mesh
-# Ubah max_num_faces sesuai batas maksimal orang yang ingin dideteksi (misal: 5)
+
+# PENTING: refine_landmarks=True diaktifkan agar menghasilkan 478 landmark
+# termasuk titik 468 & 473 (iris mata) yang dibutuhkan untuk Antropometri 13 Fitur
 face_mesh = mp_face_mesh.FaceMesh(
     static_image_mode=True,
     max_num_faces=5,
-    refine_landmarks=False,
+    refine_landmarks=True,
     min_detection_confidence=0.5,
 )
 
 
 def get_all_faces_landmarks(image_bgr):
-    """Mendeteksi semua wajah.
-    Return: list of numpy arrays, masing-masing berukuran (468, 2).
+    """
+    Mendeteksi landmark semua wajah.
+    Return: list of numpy arrays, masing-masing berukuran (478, 2).
     Jika tidak ada wajah, return list kosong [].
     """
     h, w = image_bgr.shape[:2]
@@ -42,9 +49,10 @@ def get_all_faces_landmarks(image_bgr):
 
 
 def extract_antropometri(landmarks):
-    """10 fitur antropometri - urutan & pasangan landmark PERSIS sama
-    dengan fitur_df di kode training."""
-
+    """
+    10 Fitur Antropometri Standar (FITUR_ANTROPOMETRI_10FITUR.csv).
+    Urutan persis dengan kode training.
+    """
     def euclidean(p1, p2):
         x1, y1 = landmarks[p1]
         x2, y2 = landmarks[p2]
@@ -64,10 +72,67 @@ def extract_antropometri(landmarks):
     ])
 
 
-def extract_lbp_ycbcr(image_bgr, grid_rows=3, grid_cols=3, color_bins=32,
-                       radius=1, n_points=8):
-    """LBP grid 3x3 di kanal Y (2304 fitur) + histogram 32 bin x 2 kanal
-    warna (64 fitur) -> total 2368 fitur."""
+def extract_antropometri13(landmarks):
+    """
+    13 Fitur Antropometri (ANTHROPOMETRY_13_FEATURES.csv).
+    Menggunakan 478 landmark (termasuk iris pupil 468 & 473).
+    Urutan fitur persis dengan kode training:
+    Mandible_Width, Upper_Vermilion, Lower_Vermilion, Interpupillary,
+    Intercanthal, Biocular, Nasal_Width, Nasal_Height, Nasal_Length,
+    Mouth_Width, Face_Width, Face_Height, Nasal_Parenthesis_Width.
+    """
+    def euclidean(p1, p2):
+        x1, y1 = landmarks[p1]
+        x2, y2 = landmarks[p2]
+        return float(np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
+
+    return np.array([
+        euclidean(172, 397),  # Mandible_Width
+        euclidean(0, 14),     # Upper_Vermilion_Height
+        euclidean(14, 17),    # Lower_Vermilion_Height
+        euclidean(468, 473),  # Interpupillary_Distance (Iris)
+        euclidean(133, 362),  # Intercanthal_Width
+        euclidean(33, 263),   # Biocular_Width
+        euclidean(98, 327),   # Nasal_Width
+        euclidean(168, 2),    # Nasal_Height
+        euclidean(168, 4),    # Nasal_Length
+        euclidean(61, 291),   # Mouth_Width
+        euclidean(234, 454),  # Face_Width
+        euclidean(10, 152),   # Face_Height
+        euclidean(64, 294),   # Nasal_Parenthesis_Width
+    ])
+
+
+def extract_pure_lbp_grid(image_bgr, grid_rows=3, grid_cols=3, radius=1, n_points=8):
+    """
+    Pure LBP Grid 3x3 Grayscale (PURE_LBP_GRID3x3_2304_FEATURES.csv).
+    Total: 9 sel x 256 bin histogram = 2304 fitur.
+    Digunakan khusus untuk model 'lbp_svm.pkl'.
+    """
+    image_gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    lbp_matrix = local_binary_pattern(image_gray, n_points, radius, method='default')
+
+    h, w = image_gray.shape
+    cell_h = h // grid_rows
+    cell_w = w // grid_cols
+
+    lbp_feats = []
+    for r in range(grid_rows):
+        for c in range(grid_cols):
+            crop_cell = lbp_matrix[r * cell_h:(r + 1) * cell_h, c * cell_w:(c + 1) * cell_w]
+            hist, _ = np.histogram(crop_cell.ravel(), bins=256, range=(0, 256))
+            hist = hist.astype(np.float32)
+            hist /= (hist.sum() + 1e-6)
+            lbp_feats.append(hist)
+
+    return np.concatenate(lbp_feats)
+
+
+def extract_lbp_ycbcr(image_bgr, grid_rows=3, grid_cols=3, color_bins=32, radius=1, n_points=8):
+    """
+    LBP Grid 3x3 di kanal Y (2304 fitur) + histogram Cb & Cr (64 fitur) -> total 2368 fitur.
+    Digunakan untuk model fusi 'lbp_ycbcr_antro' dan 'gabor_lbp_ycbcr'.
+    """
     image_ycbcr = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2YCrCb)
     Y_channel, Cb_channel, Cr_channel = cv2.split(image_ycbcr)
 
@@ -79,7 +144,7 @@ def extract_lbp_ycbcr(image_bgr, grid_rows=3, grid_cols=3, color_bins=32,
     lbp_feats = []
     for r in range(grid_rows):
         for c in range(grid_cols):
-            crop_cell = lbp_matrix[r*cell_h:(r+1)*cell_h, c*cell_w:(c+1)*cell_w]
+            crop_cell = lbp_matrix[r * cell_h:(r + 1) * cell_h, c * cell_w:(c + 1) * cell_w]
             hist_lbp, _ = np.histogram(crop_cell.ravel(), bins=256, range=(0, 256))
             hist_lbp = hist_lbp.astype(np.float32)
             hist_lbp /= (hist_lbp.sum() + 1e-6)
@@ -98,10 +163,12 @@ def extract_lbp_ycbcr(image_bgr, grid_rows=3, grid_cols=3, color_bins=32,
 
 
 def extract_gabor(image_bgr):
-    """32 fitur Gabor (mean, std) x 16 kombinasi sigma-theta-lambda."""
+    """
+    32 fitur Gabor (mean, std) x 16 kombinasi parameter filter.
+    """
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
 
-    thetas = [0, np.pi/4, np.pi/2, 3*np.pi/4]
+    thetas = [0, np.pi / 4, np.pi / 2, 3 * np.pi / 4]
     lambdas = [4, 12]
     sigmas = [2, 4]
     gamma, psi = 0.5, 0
@@ -115,17 +182,3 @@ def extract_gabor(image_bgr):
                 features.append(np.mean(filtered))
                 features.append(np.std(filtered))
     return np.array(features)
-
-
-def extract_hog(image_bgr):
-    """Ekstraksi HOG dengan parameter yang sama persis dengan training."""
-    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    hog_features = hog(
-        gray,
-        orientations=9,
-        pixels_per_cell=(16, 16),
-        cells_per_block=(2, 2),
-        visualize=False,
-        feature_vector=True
-    )
-    return hog_features
