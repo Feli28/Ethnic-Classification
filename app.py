@@ -457,6 +457,30 @@ else:
         )
 
 
+        # =========================
+        # FLIP KAMERA DEPAN
+        # agar sama dengan dataset
+        # =========================
+
+        image_bgr=cv2.flip(
+            image_bgr,
+            1
+        )
+
+
+    if camera:
+
+        image=Image.open(camera)
+
+        img=np.array(image)
+
+
+        image_bgr=cv2.cvtColor(
+            img,
+            cv2.COLOR_RGB2BGR
+        )
+
+
 
 # =====================================================
 # PROCESS
