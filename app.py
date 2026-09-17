@@ -15,11 +15,26 @@ from feature_extraction import (
 )
 
 
+FACE_SIZE=(510,510)
+
+
 # =====================================================
-# SIZE SESUAI TRAINING
+# MEDIAPIPE
 # =====================================================
 
-FACE_SIZE = (510,510)
+mp_detection=mp.solutions.face_detection
+mp_selfie=mp.solutions.selfie_segmentation
+
+
+face_detector=mp_detection.FaceDetection(
+    model_selection=1,
+    min_detection_confidence=0.5
+)
+
+
+segmenter=mp_selfie.SelfieSegmentation(
+    model_selection=1
+)
 
 
 
@@ -30,69 +45,55 @@ FACE_SIZE = (510,510)
 @st.cache_resource
 def load_models():
 
-    models = {}
+    models={}
 
-
-    models["LBP"] = {
-        "model": joblib.load(
-            "models/lbp_svm.pkl"
-        ),
-        "scaler": joblib.load(
-            "models/lbp_scaler.pkl"
-        )
+    models["LBP"]={
+        "model":joblib.load("models/lbp_svm.pkl"),
+        "scaler":joblib.load("models/lbp_scaler.pkl")
     }
 
 
-
-    models["Antropometri 10 Multi Angle"] = {
-        "model": joblib.load(
-            "models/antro_svm.pkl"
-        ),
-        "scaler": joblib.load(
-            "models/antro_scaler.pkl"
-        )
+    models["Antropometri 10 Multi Angle"]={
+        "model":joblib.load("models/antro_svm.pkl"),
+        "scaler":joblib.load("models/antro_scaler.pkl")
     }
 
 
-
-    models["Antro Frontal Angry"] = {
-        "model": joblib.load(
+    models["Antro Frontal Angry"]={
+        "model":joblib.load(
             "models/antropometri_angry_frontal_svm.pkl"
         ),
-        "scaler": joblib.load(
+        "scaler":joblib.load(
             "models/antropometri_angry_frontal_scaler.pkl"
         )
     }
 
 
-
-    models["Antropometri 13 Angry Frontal"] = {
-        "model": joblib.load(
+    models["Antropometri 13 Angry Frontal"]={
+        "model":joblib.load(
             "models/antropometri13_angry_frontal_svm.pkl"
         ),
-        "scaler": joblib.load(
+        "scaler":joblib.load(
             "models/antropometri13_angry_frontal_scaler.pkl"
         )
     }
 
 
-
-    models["LBP YCbCr + Antropometri"] = {
-        "model": joblib.load(
+    models["LBP YCbCr + Antropometri"]={
+        "model":joblib.load(
             "models/lbp_ycbcr_antro_svm.pkl"
         ),
-        "scaler": joblib.load(
+        "scaler":joblib.load(
             "models/lbp_ycbcr_antro_scaler.pkl"
         )
     }
 
 
-
-    models["LBP YCbCr + Gabor"] = {
-        "model": joblib.load(
+    models["LBP YCbCr + Gabor"]={
+        "model":joblib.load(
             "models/gabor_lbp_ycbcr_svm.pkl"
         ),
-        "scaler": joblib.load(
+        "scaler":joblib.load(
             "models/gabor_lbp_ycbcr_scaler.pkl"
         )
     }
@@ -103,89 +104,71 @@ def load_models():
 
 
 # =====================================================
-# FACE DETECTION
+# CROP FACE + MARGIN
 # =====================================================
-
-mp_detection = mp.solutions.face_detection
-
-
-face_detector = mp_detection.FaceDetection(
-    model_selection=1,
-    min_detection_confidence=0.5
-)
-
-
 
 def crop_face(image):
 
-    rgb = cv2.cvtColor(
+    rgb=cv2.cvtColor(
         image,
         cv2.COLOR_BGR2RGB
     )
 
 
-    result = face_detector.process(
-        rgb
-    )
+    result=face_detector.process(rgb)
 
 
     if not result.detections:
         return None
 
 
+    detection=result.detections[0]
 
-    detection = result.detections[0]
-
-
-    bbox = detection.location_data.relative_bounding_box
+    bbox=detection.location_data.relative_bounding_box
 
 
-    h,w = image.shape[:2]
+    h,w=image.shape[:2]
 
 
-    x = int(bbox.xmin*w)
-    y = int(bbox.ymin*h)
+    x=int(bbox.xmin*w)
+    y=int(bbox.ymin*h)
 
-    bw = int(bbox.width*w)
-    bh = int(bbox.height*h)
+    bw=int(bbox.width*w)
+    bh=int(bbox.height*h)
 
 
 
-    # =============================
-    # MARGIN MIRIP DATASET
-    # =============================
+    # margin mirip dataset
 
-    margin_x = int(bw*0.25)
-
-    margin_y = int(bh*0.35)
+    margin_x=int(bw*0.25)
+    margin_y=int(bh*0.35)
 
 
 
-    x1 = max(
+    x1=max(
         0,
         x-margin_x
     )
 
-    y1 = max(
+    y1=max(
         0,
         y-margin_y
     )
 
 
-    x2 = min(
+    x2=min(
         w,
         x+bw+margin_x
     )
 
-
-    y2 = min(
+    y2=min(
         h,
         y+bh+margin_y
     )
 
 
 
-    crop = image[
+    crop=image[
         y1:y2,
         x1:x2
     ]
@@ -196,18 +179,87 @@ def crop_face(image):
 
 
 # =====================================================
-# RESIZE SESUAI TRAINING
+# REMOVE BACKGROUND
+# =====================================================
+
+def remove_background(image):
+
+    rgb=cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2RGB
+    )
+
+
+    result=segmenter.process(rgb)
+
+
+    if result.segmentation_mask is None:
+        return image
+
+
+
+    mask=result.segmentation_mask
+
+
+    mask=(mask>0.35).astype(
+        np.uint8
+    )
+
+
+    kernel=np.ones(
+        (5,5),
+        np.uint8
+    )
+
+
+    mask=cv2.morphologyEx(
+        mask,
+        cv2.MORPH_CLOSE,
+        kernel
+    )
+
+
+
+    black=np.zeros_like(
+        image
+    )
+
+
+    foreground=cv2.bitwise_and(
+        image,
+        image,
+        mask=mask
+    )
+
+
+    background=cv2.bitwise_and(
+        black,
+        black,
+        mask=1-mask
+    )
+
+
+    output=cv2.add(
+        foreground,
+        background
+    )
+
+
+    return output
+
+
+
+# =====================================================
+# RESIZE
 # =====================================================
 
 def resize_face(image):
 
-    image = cv2.resize(
+    return cv2.resize(
         image,
         FACE_SIZE,
         interpolation=cv2.INTER_AREA
     )
-
-    return image
 
 
 
@@ -217,84 +269,68 @@ def resize_face(image):
 
 def extract_features(image):
 
-    features = {}
+    features={}
 
 
-
-    # LANDMARK 468
-
-    lm468 = detect_landmarks(
+    lm468=detect_landmarks(
         image,
         mode="468"
     )
 
 
-
-    # LANDMARK 478
-
-    lm478 = detect_landmarks(
+    lm478=detect_landmarks(
         image,
         mode="478"
     )
-
 
 
     if len(lm468)==0 or len(lm478)==0:
         return None
 
 
-
-    lm468 = lm468[0]
-
-    lm478 = lm478[0]
+    lm468=lm468[0]
+    lm478=lm478[0]
 
 
 
-    # ANTRO
-
-    antro10 = extract_antropometri(
+    antro10=extract_antropometri(
         lm468
     )
 
 
-    antro13 = extract_antropometri13(
+    antro13=extract_antropometri13(
         lm478
     )
 
 
 
-    # TEXTURE
-
-    lbp = extract_lbp(
+    lbp=extract_lbp(
         image
     )
 
 
-    lbp_ycbcr = extract_lbp_ycbcr(
+    lbp_ycbcr=extract_lbp_ycbcr(
         image
     )
 
 
-    gabor = extract_gabor(
+    gabor=extract_gabor(
         image
     )
 
 
 
-    features["LBP"] = lbp
+    features["LBP"]=lbp
 
+    features["Antropometri 10 Multi Angle"]=antro10
 
-    features["Antropometri 10 Multi Angle"] = antro10
+    features["Antro Frontal Angry"]=antro10
 
-
-    features["Antro Frontal Angry"] = antro10
-
-
-    features["Antropometri 13 Angry Frontal"] = antro13
+    features["Antropometri 13 Angry Frontal"]=antro13
 
 
 
-    features["LBP YCbCr + Antropometri"] = np.concatenate(
+    features["LBP YCbCr + Antropometri"]=np.concatenate(
         [
             lbp_ycbcr,
             antro10
@@ -302,8 +338,7 @@ def extract_features(image):
     )
 
 
-
-    features["LBP YCbCr + Gabor"] = np.concatenate(
+    features["LBP YCbCr + Gabor"]=np.concatenate(
         [
             lbp_ycbcr,
             gabor
@@ -311,51 +346,44 @@ def extract_features(image):
     )
 
 
-
     return features
 
+
+
 # =====================================================
-# PREDICT SVM
+# PREDICT
 # =====================================================
 
-def predict(
-    model_data,
-    feature
-):
+def predict(model_data,feature):
 
-    model = model_data["model"]
-
-    scaler = model_data["scaler"]
+    model=model_data["model"]
+    scaler=model_data["scaler"]
 
 
-    feature = feature.reshape(
+    feature=feature.reshape(
         1,-1
     )
 
 
-    feature_scaled = scaler.transform(
+    feature_scaled=scaler.transform(
         feature
     )
 
 
-    prediction = model.predict(
+    return model.predict(
         feature_scaled
     )[0]
 
 
-    return prediction
-
-
 
 # =====================================================
-# STREAMLIT CONFIG
+# STREAMLIT UI
 # =====================================================
 
 st.set_page_config(
     page_title="Ethnicity Classification",
     layout="wide"
 )
-
 
 
 st.title(
@@ -369,12 +397,8 @@ st.write(
 
 
 
-# =====================================================
-# INPUT MODE
-# =====================================================
-
-option = st.radio(
-    "Pilih Input",
+option=st.radio(
+    "Input",
     [
         "Upload Foto",
         "Ambil Foto"
@@ -383,19 +407,14 @@ option = st.radio(
 
 
 
-image_bgr = None
+image_bgr=None
 
 
 
-# =====================================================
-# UPLOAD FOTO
-# =====================================================
+if option=="Upload Foto":
 
-if option == "Upload Foto":
-
-
-    file = st.file_uploader(
-        "Upload gambar wajah",
+    file=st.file_uploader(
+        "Upload wajah",
         type=[
             "jpg",
             "jpeg",
@@ -406,65 +425,48 @@ if option == "Upload Foto":
 
     if file:
 
+        image=Image.open(file)
 
-        image = Image.open(
-            file
-        )
-
-
-        image_np = np.array(
-            image
-        )
+        img=np.array(image)
 
 
-        image_bgr = cv2.cvtColor(
-            image_np,
+        image_bgr=cv2.cvtColor(
+            img,
             cv2.COLOR_RGB2BGR
         )
 
 
 
-# =====================================================
-# CAMERA INPUT
-# =====================================================
+else:
 
-elif option == "Ambil Foto":
-
-
-    camera = st.camera_input(
-        "Ambil foto wajah"
+    camera=st.camera_input(
+        "Ambil foto"
     )
 
 
     if camera:
 
+        image=Image.open(camera)
 
-        image = Image.open(
-            camera
-        )
-
-
-        image_np = np.array(
-            image
-        )
+        img=np.array(image)
 
 
-        image_bgr = cv2.cvtColor(
-            image_np,
+        image_bgr=cv2.cvtColor(
+            img,
             cv2.COLOR_RGB2BGR
         )
 
 
 
 # =====================================================
-# PROCESS IMAGE
+# PROCESS
 # =====================================================
 
 if image_bgr is not None:
 
 
     st.subheader(
-        "Gambar Input"
+        "Input"
     )
 
 
@@ -478,18 +480,13 @@ if image_bgr is not None:
 
 
 
-    # =========================
-    # CROP + MARGIN
-    # =========================
-
-    crop = crop_face(
+    crop=crop_face(
         image_bgr
     )
 
 
 
     if crop is None:
-
 
         st.error(
             "Wajah tidak terdeteksi"
@@ -499,18 +496,18 @@ if image_bgr is not None:
     else:
 
 
-        # =========================
-        # RESIZE 510x510
-        # =========================
-
-        crop = resize_face(
+        crop=remove_background(
             crop
         )
 
 
+        crop=resize_face(
+            crop
+        )
+
 
         st.subheader(
-            "Crop Setelah Preprocessing"
+            "Preprocessing 510x510"
         )
 
 
@@ -524,16 +521,12 @@ if image_bgr is not None:
 
 
 
-        # =========================
-        # FEATURE EXTRACTION
-        # =========================
-
         with st.spinner(
             "Ekstraksi fitur..."
         ):
 
 
-            features = extract_features(
+            features=extract_features(
                 crop
             )
 
@@ -541,89 +534,62 @@ if image_bgr is not None:
 
         if features is None:
 
-
             st.error(
-                "Landmark wajah gagal dideteksi"
+                "Landmark gagal"
             )
 
 
         else:
 
+            models=load_models()
+
 
             st.success(
-                "Feature extraction selesai"
+                "Prediksi selesai"
             )
-
-
-
-            models = load_models()
-
-
-
-            st.divider()
 
 
             st.subheader(
-                "Hasil Prediksi Semua Model"
+                "Hasil Semua Model"
             )
 
 
 
-            # =====================================================
-            # GRID 3 x 2
-            # =====================================================
-
-            model_names = list(
+            names=list(
                 models.keys()
             )
 
 
+            for i in range(0,len(names),3):
 
-            for i in range(
-                0,
-                len(model_names),
-                3
-            ):
-
-
-                cols = st.columns(
-                    3
-                )
+                cols=st.columns(3)
 
 
                 for col,name in zip(
                     cols,
-                    model_names[i:i+3]
+                    names[i:i+3]
                 ):
-
 
                     with col:
 
-
-                        result = predict(
+                        result=predict(
                             models[name],
                             features[name]
                         )
 
 
-
                         st.markdown(
                             f"""
                             <div style="
-                            border:1px solid #cccccc;
+                            border:1px solid #ddd;
                             border-radius:15px;
                             padding:15px;
                             text-align:center;
-                            margin-bottom:15px;
                             ">
 
-                            <h4>
-                            {name}
-                            </h4>
+                            <h4>{name}</h4>
 
-                            <h2 style="
-                            color:#008000;
-                            ">
+                            <h2 style="color:green">
                             {result}
                             </h2>
 
