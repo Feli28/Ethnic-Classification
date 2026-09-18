@@ -11,7 +11,8 @@ from feature_extraction import (
     extract_antropometri13,
     extract_lbp,
     extract_lbp_ycbcr,
-    extract_gabor
+    extract_gabor,
+    extract_antropometri22
 )
 
 
@@ -97,6 +98,18 @@ def load_models():
             "models/gabor_lbp_ycbcr_scaler.pkl"
         )
     }
+
+    models["Antropometri 22 Angry Frontal"]={
+
+    "model":joblib.load(
+        "models/antro22_angry_frontal_svm.pkl"
+    ),
+
+    "scaler":joblib.load(
+        "models/antro22_angry_frontal_scaler.pkl"
+    )
+
+}
 
 
     return models
@@ -262,7 +275,6 @@ def resize_face(image):
     )
 
 
-
 # =====================================================
 # FEATURE EXTRACTION
 # =====================================================
@@ -285,13 +297,19 @@ def extract_features(image):
 
 
     if len(lm468)==0 or len(lm478)==0:
+
         return None
 
 
     lm468=lm468[0]
+
     lm478=lm478[0]
 
 
+
+    # =========================
+    # ANTROPOMETRI
+    # =========================
 
     antro10=extract_antropometri(
         lm468
@@ -303,6 +321,15 @@ def extract_features(image):
     )
 
 
+    antro22=extract_antropometri22(
+        lm478
+    )
+
+
+
+    # =========================
+    # TEXTURE
+    # =========================
 
     lbp=extract_lbp(
         image
@@ -320,13 +347,23 @@ def extract_features(image):
 
 
 
+    # =========================
+    # SIMPAN FEATURE
+    # =========================
+
     features["LBP"]=lbp
+
 
     features["Antropometri 10 Multi Angle"]=antro10
 
+
     features["Antro Frontal Angry"]=antro10
 
+
     features["Antropometri 13 Angry Frontal"]=antro13
+
+
+    features["Antropometri 22 Angry Frontal"]=antro22
 
 
 
@@ -347,8 +384,6 @@ def extract_features(image):
 
 
     return features
-
-
 
 # =====================================================
 # PREDICT
