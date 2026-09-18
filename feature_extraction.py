@@ -1,512 +1,1139 @@
+import streamlit as st
+
 import cv2
 import numpy as np
+import joblib
+
+from PIL import Image
+
 import mediapipe as mp
-from skimage.feature import local_binary_pattern
 
 
-# =====================================================
-# MEDIAPIPE FACE MESH
-# =====================================================
 
-mp_face_mesh = mp.solutions.face_mesh
+from feature_extraction import (
 
+    detect_landmarks,
 
-# 468 landmark
-face_mesh_468 = mp_face_mesh.FaceMesh(
-    static_image_mode=True,
-    max_num_faces=1,
-    refine_landmarks=False,
-    min_detection_confidence=0.5
-)
+    extract_antropometri,
 
+    extract_antropometri13,
 
-# 478 landmark (iris)
-face_mesh_478 = mp_face_mesh.FaceMesh(
-    static_image_mode=True,
-    max_num_faces=1,
-    refine_landmarks=True,
-    min_detection_confidence=0.5
+    extract_antropometri22,
+
+    extract_lbp,
+
+    extract_lbp_ycbcr,
+
+    extract_gabor
+
 )
 
 
 
+
+
 # =====================================================
-# LANDMARK EXTRACTION
+# CONFIG
 # =====================================================
 
-def detect_landmarks(image_bgr, mode="468"):
+FACE_SIZE = (510,510)
 
-    h, w = image_bgr.shape[:2]
+
+
+
+
+# =====================================================
+# MEDIAPIPE
+# =====================================================
+
+mp_detection = mp.solutions.face_detection
+
+mp_selfie = mp.solutions.selfie_segmentation
+
+
+
+face_detector = mp_detection.FaceDetection(
+
+    model_selection=1,
+
+    min_detection_confidence=0.5
+
+)
+
+
+
+segmenter = mp_selfie.SelfieSegmentation(
+
+    model_selection=1
+
+)
+
+
+
+
+
+
+
+# =====================================================
+# LOAD MODEL
+# =====================================================
+
+@st.cache_resource
+
+def load_models():
+
+
+    models = {}
+
+
+
+    # =========================
+    # LBP
+    # =========================
+
+    models["LBP"] = {
+
+        "model": joblib.load(
+            "models/lbp_svm.pkl"
+        ),
+
+        "scaler": joblib.load(
+            "models/lbp_scaler.pkl"
+        )
+
+    }
+
+
+
+
+
+    # =========================
+    # ANTROPOMETRI 10
+    # =========================
+
+    models["Antropometri 10 Multi Angle"] = {
+
+
+        "model": joblib.load(
+            "models/antro_svm.pkl"
+        ),
+
+
+        "scaler": joblib.load(
+            "models/antro_scaler.pkl"
+        )
+
+
+    }
+
+
+
+
+
+    # =========================
+    # ANTRO FRONTAL ANGRY
+    # =========================
+
+    models["Antro Frontal Angry"] = {
+
+
+        "model": joblib.load(
+            "models/antropometri_angry_frontal_svm.pkl"
+        ),
+
+
+        "scaler": joblib.load(
+            "models/antropometri_angry_frontal_scaler.pkl"
+        )
+
+
+    }
+
+
+
+
+
+
+
+    # =========================
+    # ANTRO 13
+    # =========================
+
+    models["Antropometri 13 Angry Frontal"] = {
+
+
+        "model": joblib.load(
+            "models/antropometri13_angry_frontal_svm.pkl"
+        ),
+
+
+        "scaler": joblib.load(
+            "models/antropometri13_angry_frontal_scaler.pkl"
+        )
+
+
+    }
+
+
+
+
+
+
+
+    # =========================
+    # ANTRO 22 (BARU)
+    # =========================
+
+    models["Antropometri 22 Angry Frontal"] = {
+
+
+        "model": joblib.load(
+            "models/antro22_angry_frontal_svm.pkl"
+        ),
+
+
+        "scaler": joblib.load(
+            "models/antro22_angry_frontal_scaler.pkl"
+        )
+
+
+    }
+
+
+
+
+
+
+
+    # =========================
+    # LBP YCBCR + ANTRO
+    # =========================
+
+    models["LBP YCbCr + Antropometri"] = {
+
+
+        "model": joblib.load(
+            "models/lbp_ycbcr_antro_svm.pkl"
+        ),
+
+
+        "scaler": joblib.load(
+            "models/lbp_ycbcr_antro_scaler.pkl"
+        )
+
+
+    }
+
+
+
+
+
+
+
+    # =========================
+    # LBP YCBCR + GABOR
+    # =========================
+
+    models["LBP YCbCr + Gabor"] = {
+
+
+        "model": joblib.load(
+            "models/gabor_lbp_ycbcr_svm.pkl"
+        ),
+
+
+        "scaler": joblib.load(
+            "models/gabor_lbp_ycbcr_scaler.pkl"
+        )
+
+
+    }
+
+
+
+    return models
+
+
+
+
+
+
+
+# =====================================================
+# CROP FACE
+# =====================================================
+
+def crop_face(image):
 
 
     rgb = cv2.cvtColor(
-        image_bgr,
+
+        image,
+
         cv2.COLOR_BGR2RGB
+
     )
 
 
-    if mode == "478":
-        result = face_mesh_478.process(rgb)
+
+    result = face_detector.process(rgb)
+
+
+
+    if not result.detections:
+
+        return None
+
+
+
+
+
+    detection = result.detections[0]
+
+
+
+    bbox = detection.location_data.relative_bounding_box
+
+
+
+    h,w = image.shape[:2]
+
+
+
+    x = int(
+        bbox.xmin*w
+    )
+
+
+    y = int(
+        bbox.ymin*h
+    )
+
+
+    bw = int(
+        bbox.width*w
+    )
+
+
+    bh = int(
+        bbox.height*h
+    )
+
+
+
+
+
+    # margin sama dataset
+
+    margin_x = int(
+        bw*0.25
+    )
+
+
+    margin_y = int(
+        bh*0.35
+    )
+
+
+
+
+
+    x1=max(
+        0,
+        x-margin_x
+    )
+
+
+    y1=max(
+        0,
+        y-margin_y
+    )
+
+
+
+    x2=min(
+        w,
+        x+bw+margin_x
+    )
+
+
+    y2=min(
+        h,
+        y+bh+margin_y
+    )
+
+
+
+    crop = image[
+        y1:y2,
+        x1:x2
+    ]
+
+
+
+    return crop
+
+
+
+
+
+
+
+# =====================================================
+# REMOVE BACKGROUND
+# =====================================================
+
+def remove_background(image):
+
+
+    rgb=cv2.cvtColor(
+
+        image,
+
+        cv2.COLOR_BGR2RGB
+
+    )
+
+
+
+    result = segmenter.process(rgb)
+
+
+
+    if result.segmentation_mask is None:
+
+        return image
+
+
+
+
+
+    mask = result.segmentation_mask
+
+
+
+    mask = (
+
+        mask > 0.35
+
+    ).astype(np.uint8)
+
+
+
+
+
+    kernel=np.ones(
+
+        (5,5),
+
+        np.uint8
+
+    )
+
+
+
+    mask=cv2.morphologyEx(
+
+        mask,
+
+        cv2.MORPH_CLOSE,
+
+        kernel
+
+    )
+
+
+
+
+
+    foreground=cv2.bitwise_and(
+
+        image,
+
+        image,
+
+        mask=mask
+
+    )
+
+
+
+    black=np.zeros_like(image)
+
+
+
+    background=cv2.bitwise_and(
+
+        black,
+
+        black,
+
+        mask=1-mask
+
+    )
+
+
+
+    output=cv2.add(
+
+        foreground,
+
+        background
+
+    )
+
+
+
+    return output
+
+
+
+
+
+
+
+# =====================================================
+# RESIZE
+# =====================================================
+
+def resize_face(image):
+
+
+    return cv2.resize(
+
+        image,
+
+        FACE_SIZE,
+
+        interpolation=cv2.INTER_AREA
+
+    )
+
+# =====================================================
+# FEATURE EXTRACTION
+# =====================================================
+
+def extract_features(image):
+
+
+    features = {}
+
+
+
+    # =========================
+    # LANDMARK
+    # =========================
+
+    lm468 = detect_landmarks(
+
+        image,
+
+        mode="468"
+
+    )
+
+
+    lm478 = detect_landmarks(
+
+        image,
+
+        mode="478"
+
+    )
+
+
+
+
+    if len(lm468)==0 or len(lm478)==0:
+
+        return None
+
+
+
+
+
+    lm468 = lm468[0]
+
+    lm478 = lm478[0]
+
+
+
+
+
+    # =========================
+    # ANTROPOMETRI
+    # =========================
+
+    antro10 = extract_antropometri(
+
+        lm468
+
+    )
+
+
+    antro13 = extract_antropometri13(
+
+        lm478
+
+    )
+
+
+    antro22 = extract_antropometri22(
+
+        lm478
+
+    )
+
+
+
+
+
+    # =========================
+    # TEXTURE
+    # =========================
+
+    lbp = extract_lbp(
+
+        image
+
+    )
+
+
+    lbp_ycbcr = extract_lbp_ycbcr(
+
+        image
+
+    )
+
+
+    gabor = extract_gabor(
+
+        image
+
+    )
+
+
+
+
+
+    # =========================
+    # SIMPAN FITUR
+    # =========================
+
+
+    features["LBP"] = lbp
+
+
+
+    features["Antropometri 10 Multi Angle"] = antro10
+
+
+
+    features["Antro Frontal Angry"] = antro10
+
+
+
+    features["Antropometri 13 Angry Frontal"] = antro13
+
+
+
+    features["Antropometri 22 Angry Frontal"] = antro22
+
+
+
+
+
+    features["LBP YCbCr + Antropometri"] = np.concatenate(
+
+        [
+
+            lbp_ycbcr,
+
+            antro10
+
+        ]
+
+    )
+
+
+
+
+
+    features["LBP YCbCr + Gabor"] = np.concatenate(
+
+        [
+
+            lbp_ycbcr,
+
+            gabor
+
+        ]
+
+    )
+
+
+
+    return features
+
+
+
+
+
+
+
+# =====================================================
+# PREDICTION
+# =====================================================
+
+def predict(model_data, feature):
+
+
+    model = model_data["model"]
+
+    scaler = model_data["scaler"]
+
+
+
+    feature = feature.reshape(
+
+        1,-1
+
+    )
+
+
+
+    feature_scaled = scaler.transform(
+
+        feature
+
+    )
+
+
+
+    result = model.predict(
+
+        feature_scaled
+
+    )[0]
+
+
+
+    return result
+
+
+
+
+
+
+
+# =====================================================
+# STREAMLIT CONFIG
+# =====================================================
+
+st.set_page_config(
+
+    page_title="Ethnicity Classification",
+
+    layout="wide"
+
+)
+
+
+
+st.title(
+
+    "Facial Feature Based Ethnicity Classification"
+
+)
+
+
+st.write(
+
+    "SVM RBF - Landmark + Texture Feature Pipeline"
+
+)
+
+
+
+
+
+
+
+# =====================================================
+# INPUT
+# =====================================================
+
+option = st.radio(
+
+    "Input",
+
+    [
+
+        "Upload Foto",
+
+        "Ambil Foto"
+
+    ]
+
+)
+
+
+
+image_bgr = None
+
+
+
+
+
+
+
+# =====================================================
+# UPLOAD
+# =====================================================
+
+if option=="Upload Foto":
+
+
+    file = st.file_uploader(
+
+        "Upload wajah",
+
+        type=[
+
+            "jpg",
+
+            "jpeg",
+
+            "png"
+
+        ]
+
+    )
+
+
+    if file:
+
+
+        image = Image.open(file)
+
+
+        img = np.array(image)
+
+
+
+        image_bgr = cv2.cvtColor(
+
+            img,
+
+            cv2.COLOR_RGB2BGR
+
+        )
+
+
+
+
+
+
+
+# =====================================================
+# CAMERA
+# =====================================================
+
+else:
+
+
+    camera = st.camera_input(
+
+        "Ambil foto"
+
+    )
+
+
+
+    if camera:
+
+
+        image = Image.open(camera)
+
+
+        img = np.array(image)
+
+
+
+        image_bgr = cv2.cvtColor(
+
+            img,
+
+            cv2.COLOR_RGB2BGR
+
+        )
+
+
+
+        # =============================
+        # FLIP CAMERA MIRROR
+        # =============================
+
+        image_bgr = cv2.flip(
+
+            image_bgr,
+
+            1
+
+        )
+
+
+
+
+
+
+
+# =====================================================
+# PROCESS
+# =====================================================
+
+if image_bgr is not None:
+
+
+
+    st.subheader(
+
+        "Input"
+
+    )
+
+
+    st.image(
+
+        cv2.cvtColor(
+
+            image_bgr,
+
+            cv2.COLOR_BGR2RGB
+
+        ),
+
+        width=300
+
+    )
+
+
+
+
+
+    crop = crop_face(
+
+        image_bgr
+
+    )
+
+
+
+
+    if crop is None:
+
+
+        st.error(
+
+            "Wajah tidak terdeteksi"
+
+        )
+
+
 
     else:
-        result = face_mesh_468.process(rgb)
 
 
 
-    if not result.multi_face_landmarks:
-        return []
+        crop = remove_background(
 
+            crop
 
-
-    faces=[]
-
-
-    for face in result.multi_face_landmarks:
-
-        points=np.array(
-            [
-                [
-                    lm.x*w,
-                    lm.y*h
-                ]
-
-                for lm in face.landmark
-            ],
-            dtype=np.float32
-        )
-
-
-        faces.append(points)
-
-
-
-    return faces
-
-
-
-# =====================================================
-# ANTROPOMETRI 10 FITUR
-# 468 LANDMARK
-# =====================================================
-
-def extract_antropometri(landmarks):
-
-
-    def dist(a,b):
-
-        return np.linalg.norm(
-            landmarks[a]-landmarks[b]
-        )
-
-
-    return np.array(
-
-        [
-
-            # Intercanthal Width
-            dist(133,362),
-
-            # Biocular Width
-            dist(33,263),
-
-            # Nasal Width
-            dist(98,327),
-
-            # Nasal Height
-            dist(168,2),
-
-            # Nasal Length
-            dist(4,2),
-
-            # Mouth Width
-            dist(61,291),
-
-            # Philtrum Length
-            dist(2,13),
-
-            # Face Width
-            dist(234,454),
-
-            # Face Height
-            dist(10,152),
-
-            # Nasal Parenthesis Width
-            dist(64,294)
-
-        ],
-
-        dtype=np.float32
-
-    )
-
-
-
-# =====================================================
-# ANTROPOMETRI 13 FITUR
-# 478 LANDMARK
-# =====================================================
-
-def extract_antropometri13(landmarks):
-
-
-    def dist(a,b):
-
-        return np.linalg.norm(
-            landmarks[a]-landmarks[b]
         )
 
 
 
-    return np.array(
+        crop = resize_face(
 
-        [
+            crop
 
-            # Mandible Width
-            dist(172,397),
-
-            # Upper Vermilion Height
-            dist(0,14),
-
-            # Lower Vermilion Height
-            dist(14,17),
-
-            # Interpupillary Distance
-            dist(468,473),
-
-            # Intercanthal Width
-            dist(133,362),
-
-            # Biocular Width
-            dist(33,263),
-
-            # Nasal Width
-            dist(98,327),
-
-            # Nasal Height
-            dist(168,2),
-
-            # Nasal Length
-            dist(168,4),
-
-            # Mouth Width
-            dist(61,291),
-
-            # Face Width
-            dist(234,454),
-
-            # Face Height
-            dist(10,152),
-
-            # Nasal Parenthesis Width
-            dist(64,294)
-
-        ],
-
-        dtype=np.float32
-
-    )
+        )
 
 
 
-# =====================================================
-# PURE LBP 2304 FEATURES
-# =====================================================
-
-def extract_lbp(image):
 
 
-    gray=cv2.cvtColor(
-        image,
-        cv2.COLOR_BGR2GRAY
-    )
+        st.subheader(
 
+            "Preprocessing 510x510"
 
-    lbp=local_binary_pattern(
-        gray,
-        8,
-        1,
-        method="default"
-    )
-
-
-    h,w=gray.shape
-
-
-    features=[]
-
-
-    for r in range(3):
-
-        for c in range(3):
-
-
-            cell=lbp[
-                r*h//3:(r+1)*h//3,
-                c*w//3:(c+1)*w//3
-            ]
+        )
 
 
 
-            hist,_=np.histogram(
+        st.image(
 
-                cell.ravel(),
+            cv2.cvtColor(
 
-                bins=256,
+                crop,
 
-                range=(0,256)
+                cv2.COLOR_BGR2RGB
+
+            ),
+
+            width=300
+
+        )
+
+
+
+
+
+
+        with st.spinner(
+
+            "Ekstraksi fitur..."
+
+        ):
+
+
+
+            features = extract_features(
+
+                crop
 
             )
 
 
-            hist=hist.astype(
-                np.float32
-            )
-
-
-            hist/=(
-                hist.sum()+1e-6
-            )
-
-
-            features.extend(hist)
 
 
 
-    return np.array(
-        features,
-        dtype=np.float32
-    )
 
 
-
-# =====================================================
-# LBP YCBCR 2368 FEATURES
-# =====================================================
-
-def extract_lbp_ycbcr(image):
+        if features is None:
 
 
-    ycbcr=cv2.cvtColor(
-        image,
-        cv2.COLOR_BGR2YCrCb
-    )
+            st.error(
 
-
-    Y,Cb,Cr=cv2.split(
-        ycbcr
-    )
-
-
-
-    lbp=local_binary_pattern(
-
-        Y,
-
-        8,
-
-        1,
-
-        method="default"
-
-    )
-
-
-
-    h,w=Y.shape
-
-
-    features=[]
-
-
-
-    for r in range(3):
-
-        for c in range(3):
-
-
-            cell=lbp[
-
-                r*h//3:(r+1)*h//3,
-
-                c*w//3:(c+1)*w//3
-
-            ]
-
-
-
-            hist,_=np.histogram(
-
-                cell.ravel(),
-
-                bins=256,
-
-                range=(0,256)
+                "Landmark gagal"
 
             )
 
 
-            hist=hist.astype(
-                np.float32
+
+        else:
+
+
+
+            models = load_models()
+
+
+
+            st.success(
+
+                "Prediksi selesai"
+
             )
 
 
-            hist/=(
-                hist.sum()+1e-6
+
+
+
+            st.subheader(
+
+                "Hasil Semua Model"
+
             )
 
 
-            features.extend(hist)
 
 
+            names = list(
 
-    # Cb histogram
+                models.keys()
 
-    hist_cb,_=np.histogram(
+            )
 
-        Cb.ravel(),
 
-        bins=32,
 
-        range=(0,256)
 
-    )
 
+            for i in range(
 
+                0,
 
-    # Cr histogram
+                len(names),
 
-    hist_cr,_=np.histogram(
+                3
 
-        Cr.ravel(),
+            ):
 
-        bins=32,
 
-        range=(0,256)
 
-    )
+                cols = st.columns(3)
 
 
 
-    hist_cb=hist_cb.astype(
-        np.float32
-    )
 
-    hist_cr=hist_cr.astype(
-        np.float32
-    )
 
+                for col,name in zip(
 
+                    cols,
 
-    hist_cb/=(
-        hist_cb.sum()+1e-6
-    )
+                    names[i:i+3]
 
-    hist_cr/=(
-        hist_cr.sum()+1e-6
-    )
+                ):
 
 
 
-    features.extend(hist_cb)
+                    with col:
 
-    features.extend(hist_cr)
 
 
+                        result = predict(
 
-    return np.array(
+                            models[name],
 
-        features,
+                            features[name]
 
-        dtype=np.float32
+                        )
 
-    )
 
 
 
-# =====================================================
-# GABOR 32 FEATURES
-# =====================================================
+                        st.markdown(
 
-def extract_gabor(image):
+                            f"""
 
+                            <div style="
 
-    gray=cv2.cvtColor(
+                            border:1px solid #ddd;
 
-        image,
+                            border-radius:15px;
 
-        cv2.COLOR_BGR2GRAY
+                            padding:15px;
 
-    )
+                            text-align:center;
 
+                            ">
 
-    features=[]
 
 
+                            <h4>{name}</h4>
 
-    for sigma in [2,4]:
 
-        for theta in [
+                            <h2 style="color:green">
 
-            0,
+                            {result}
 
-            np.pi/4,
+                            </h2>
 
-            np.pi/2,
 
-            3*np.pi/4
 
-        ]:
+                            </div>
 
-            for lambd in [4,12]:
+                            """,
 
+                            unsafe_allow_html=True
 
-                kernel=cv2.getGaborKernel(
-
-                    (31,31),
-
-                    sigma,
-
-                    theta,
-
-                    lambd,
-
-                    0.5,
-
-                    0
-
-                )
-
-
-                filtered=cv2.filter2D(
-
-                    gray,
-
-                    cv2.CV_32F,
-
-                    kernel
-
-                )
-
-
-                features.append(
-
-                    np.mean(filtered)
-
-                )
-
-
-                features.append(
-
-                    np.std(filtered)
-
-                )
-
-
-
-    return np.array(
-
-        features,
-
-        dtype=np.float32
-
-    )
+                        )
