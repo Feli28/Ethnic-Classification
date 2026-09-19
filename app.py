@@ -120,10 +120,6 @@ def load_models():
 # CROP FACE + MARGIN
 # =====================================================
 
-# =====================================================
-# CROP FACE SQUARE
-# =====================================================
-
 def crop_face(image):
 
     rgb = cv2.cvtColor(
@@ -157,13 +153,8 @@ def crop_face(image):
 
 
 
-    # =========================
-    # Tambahkan margin
-    # =========================
-
-    margin = int(
-        max(bw,bh)*0.35
-    )
+    # tambah margin
+    margin = int(max(bw,bh)*0.35)
 
 
 
@@ -172,14 +163,8 @@ def crop_face(image):
 
 
 
-    # =========================
-    # Square crop
-    # =========================
-
-    size = max(
-        bw,
-        bh
-    ) + margin*2
+    # ambil sisi terbesar supaya kotak
+    size = max(bw,bh) + margin*2
 
 
 
@@ -192,7 +177,6 @@ def crop_face(image):
 
 
     # batas gambar
-
     x1=max(0,x1)
     y1=max(0,y1)
 
@@ -207,113 +191,21 @@ def crop_face(image):
     ]
 
 
-
     return crop
 
-
-
-
-
-
 # =====================================================
-# REMOVE BACKGROUND
-# =====================================================
-
-def remove_background(image):
-
-
-    rgb=cv2.cvtColor(
-        image,
-        cv2.COLOR_BGR2RGB
-    )
-
-
-    result=segmenter.process(
-        rgb
-    )
-
-
-    if result.segmentation_mask is None:
-
-        return image
-
-
-
-    mask=result.segmentation_mask
-
-
-
-    mask=(
-        mask>0.35
-    ).astype(
-        np.uint8
-    )
-
-
-
-    kernel=np.ones(
-        (5,5),
-        np.uint8
-    )
-
-
-    mask=cv2.morphologyEx(
-        mask,
-        cv2.MORPH_CLOSE,
-        kernel
-    )
-
-
-
-    foreground=cv2.bitwise_and(
-        image,
-        image,
-        mask=mask
-    )
-
-
-    black=np.zeros_like(
-        image
-    )
-
-
-    background=cv2.bitwise_and(
-        black,
-        black,
-        mask=1-mask
-    )
-
-
-
-    output=cv2.add(
-        foreground,
-        background
-    )
-
-
-    return output
-
-
-
-
-
-
-# =====================================================
-# RESIZE 510x510
+# RESIZE
 # =====================================================
 
 def resize_face(image):
 
-
     return cv2.resize(
-
         image,
-
-        (510,510),
-
+        FACE_SIZE,
         interpolation=cv2.INTER_AREA
-
     )
+
+
 # =====================================================
 # FEATURE EXTRACTION
 # =====================================================
@@ -575,8 +467,9 @@ if image_bgr is not None:
 
 
     crop=crop_face(
-    image_bgr
+        image_bgr
     )
+
 
 
     if crop is None:
@@ -585,26 +478,19 @@ if image_bgr is not None:
             "Wajah tidak terdeteksi"
         )
 
-        st.stop()
+
+    else:
 
 
-
-# cek ukuran sebelum resize
-    st.write(
-        "Square crop:",
-        crop.shape
-    )
+        crop=remove_background(
+            crop
+        )
 
 
+        crop=resize_face(
+            crop
+        )
 
-    crop=resize_face(
-        crop
-    )
-
-
-    crop=remove_background(
-        crop
-)
 
         st.subheader(
             "Preprocessing 510x510"
