@@ -122,66 +122,62 @@ def load_models():
 
 def crop_face(image):
 
-    rgb = cv2.cvtColor(
+    rgb=cv2.cvtColor(
         image,
         cv2.COLOR_BGR2RGB
     )
 
 
-    result = face_detector.process(rgb)
+    result=face_detector.process(rgb)
 
 
     if not result.detections:
         return None
 
 
+    detection=result.detections[0]
 
-    detection = result.detections[0]
-
-
-    bbox = detection.location_data.relative_bounding_box
+    bbox=detection.location_data.relative_bounding_box
 
 
-    h,w = image.shape[:2]
+    h,w=image.shape[:2]
 
 
-    x = int(bbox.xmin*w)
-    y = int(bbox.ymin*h)
+    x=int(bbox.xmin*w)
+    y=int(bbox.ymin*h)
 
-    bw = int(bbox.width*w)
-    bh = int(bbox.height*h)
+    bw=int(bbox.width*w)
+    bh=int(bbox.height*h)
 
 
 
-    # tambah margin
-    margin = int(max(bw,bh)*0.35)
+    # margin mirip dataset
+
+    margin_x=int(bw*0.25)
+    margin_y=int(bh*0.35)
 
 
 
-    cx = x + bw//2
-    cy = y + bh//2
+    x1=max(
+        0,
+        x-margin_x
+    )
+
+    y1=max(
+        0,
+        y-margin_y
+    )
 
 
+    x2=min(
+        w,
+        x+bw+margin_x
+    )
 
-    # ambil sisi terbesar supaya kotak
-    size = max(bw,bh) + margin*2
-
-
-
-    x1 = cx - size//2
-    y1 = cy - size//2
-
-    x2 = cx + size//2
-    y2 = cy + size//2
-
-
-
-    # batas gambar
-    x1=max(0,x1)
-    y1=max(0,y1)
-
-    x2=min(w,x2)
-    y2=min(h,y2)
+    y2=min(
+        h,
+        y+bh+margin_y
+    )
 
 
 
@@ -192,6 +188,79 @@ def crop_face(image):
 
 
     return crop
+
+
+
+# =====================================================
+# REMOVE BACKGROUND
+# =====================================================
+
+def remove_background(image):
+
+    rgb=cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2RGB
+    )
+
+
+    result=segmenter.process(rgb)
+
+
+    if result.segmentation_mask is None:
+        return image
+
+
+
+    mask=result.segmentation_mask
+
+
+    mask=(mask>0.35).astype(
+        np.uint8
+    )
+
+
+    kernel=np.ones(
+        (5,5),
+        np.uint8
+    )
+
+
+    mask=cv2.morphologyEx(
+        mask,
+        cv2.MORPH_CLOSE,
+        kernel
+    )
+
+
+
+    black=np.zeros_like(
+        image
+    )
+
+
+    foreground=cv2.bitwise_and(
+        image,
+        image,
+        mask=mask
+    )
+
+
+    background=cv2.bitwise_and(
+        black,
+        black,
+        mask=1-mask
+    )
+
+
+    output=cv2.add(
+        foreground,
+        background
+    )
+
+
+    return output
+
+
 
 # =====================================================
 # RESIZE
