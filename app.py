@@ -93,9 +93,11 @@ def load_models():
 # =====================================================
 
 def crop_face(image):
-    """Deteksi wajah lalu crop area PERSEGI di sekitarnya, dengan padding
-    hitam kalau area crop keluar dari batas gambar asli - menjamin hasil
-    selalu persegi sehingga resize ke 510x510 tidak menyebabkan distorsi.
+    """Deteksi wajah lalu crop area PERSEGI di sekitarnya. Berbeda dari
+    versi sebelumnya, di sini TIDAK menambahkan padding hitam - ukuran
+    crop dibatasi ke ruang yang benar-benar tersedia di sekitar wajah,
+    supaya wajah selalu memenuhi frame (mendekati kondisi tight-crop
+    MTCNN saat training), bukan malah mengecil dikelilingi bar hitam.
     """
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     result = face_detector.process(rgb)
@@ -113,43 +115,22 @@ def crop_face(image):
     bw = int(bbox.width * w)
     bh = int(bbox.height * h)
 
-    margin = int(max(bw, bh) * 0.35)
-    size = max(bw, bh) + margin * 2
-
     cx = x + bw // 2
     cy = y + bh // 2
 
-    x1 = cx - size // 2
-    y1 = cy - size // 2
-    x2 = x1 + size
-    y2 = y1 + size
+    margin = int(max(bw, bh) * 0.3)
+    half_target = max(bw, bh) // 2 + margin
 
-    # Hitung padding yang dibutuhkan di tiap sisi kalau area crop
-    # melewati batas gambar asli
-    pad_left = max(0, -x1)
-    pad_top = max(0, -y1)
-    pad_right = max(0, x2 - w)
-    pad_bottom = max(0, y2 - h)
+    # Batasi setengah-ukuran ke ruang yang benar-benar ada di 4 arah
+    # dari titik tengah wajah - ini yang mencegah perlunya padding
+    half_size = min(half_target, cx, cy, w - cx, h - cy)
 
-    padded = cv2.copyMakeBorder(
-        image, pad_top, pad_bottom, pad_left, pad_right,
-        cv2.BORDER_CONSTANT, value=(0, 0, 0),
-    )
+    x1 = cx - half_size
+    y1 = cy - half_size
+    x2 = cx + half_size
+    y2 = cy + half_size
 
-    # Geser koordinat crop sesuai padding yang baru ditambahkan
-    x1 += pad_left
-    y1 += pad_top
-    x2 += pad_left
-    y2 += pad_top
-
-    crop = padded[y1:y2, x1:x2]
-
-    # Jaga-jaga: pastikan benar-benar persegi
-    ch, cw = crop.shape[:2]
-    if ch != cw:
-        m = min(ch, cw)
-        crop = crop[:m, :m]
-
+    crop = image[y1:y2, x1:x2]
     return crop
 
 
