@@ -93,11 +93,12 @@ def load_models():
 # =====================================================
 
 def crop_face(image):
-    """Deteksi wajah lalu crop area PERSEGI di sekitarnya. Berbeda dari
-    versi sebelumnya, di sini TIDAK menambahkan padding hitam - ukuran
-    crop dibatasi ke ruang yang benar-benar tersedia di sekitar wajah,
-    supaya wajah selalu memenuhi frame (mendekati kondisi tight-crop
-    MTCNN saat training), bukan malah mengecil dikelilingi bar hitam.
+    """Deteksi wajah lalu crop dengan margin independen X/Y (TIDAK
+    dipaksa persegi). Margin X dituning lebih besar dari versi lama
+    (0.25 -> 0.5) untuk mengimbangi bounding box wajah yang biasanya
+    lebih tinggi daripada lebar (rasio ~1.2:1), sehingga hasil crop
+    secara alami mendekati persegi tanpa perlu clamp/padding yang
+    berisiko memotong dahi atau mendilusi frame dengan bar hitam.
     """
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     result = face_detector.process(rgb)
@@ -115,20 +116,14 @@ def crop_face(image):
     bw = int(bbox.width * w)
     bh = int(bbox.height * h)
 
-    cx = x + bw // 2
-    cy = y + bh // 2
+    # Margin mirip dataset - X dituning agar mendekati persegi
+    margin_x = int(bw * 0.5)
+    margin_y = int(bh * 0.35)
 
-    margin = int(max(bw, bh) * 0.3)
-    half_target = max(bw, bh) // 2 + margin
-
-    # Batasi setengah-ukuran ke ruang yang benar-benar ada di 4 arah
-    # dari titik tengah wajah - ini yang mencegah perlunya padding
-    half_size = min(half_target, cx, cy, w - cx, h - cy)
-
-    x1 = cx - half_size
-    y1 = cy - half_size
-    x2 = cx + half_size
-    y2 = cy + half_size
+    x1 = max(0, x - margin_x)
+    y1 = max(0, y - margin_y)
+    x2 = min(w, x + bw + margin_x)
+    y2 = min(h, y + bh + margin_y)
 
     crop = image[y1:y2, x1:x2]
     return crop
