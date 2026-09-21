@@ -1,13 +1,9 @@
 import streamlit as st
-
 import cv2
 import numpy as np
 import joblib
-
 from PIL import Image
-
 import mediapipe as mp
-
 
 from feature_extraction import (
     detect_landmarks,
@@ -50,6 +46,7 @@ segmenter = mp_selfie.SelfieSegmentation(model_selection=1)
 def load_models():
     models = {}
 
+    # Model Standalone & Eksisting
     models["LBP"] = {
         "model": joblib.load("models/lbp_svm.pkl"),
         "scaler": joblib.load("models/lbp_scaler.pkl"),
@@ -85,21 +82,26 @@ def load_models():
         "scaler": joblib.load("models/gabor_lbp_ycbcr_scaler.pkl"),
     }
 
+    # Model Baru Berbasis One-vs-All (OVA)
+    models["OVA Antro + LBP YCbCr"] = {
+        "model": joblib.load("models/OVA_antro_lbp_ycbcr_svm.pkl"),
+        "scaler": joblib.load("models/OVA_antro_lbp_ycbcr_scaler.pkl"),
+    }
+
+    models["OVA Gabor + LBP YCbCr"] = {
+        "model": joblib.load("models/OVA_gabor_lbp_ycbcr_svm.pkl"),
+        "scaler": joblib.load("models/OVA_gabor_lbp_ycbcr_scaler.pkl"),
+    }
+
     return models
 
 
 # =====================================================
-# CROP FACE SQUARE (diperbaiki - selalu persegi, pakai copyMakeBorder)
+# CROP FACE SQUARE
 # =====================================================
 
 def crop_face(image):
-    """Deteksi wajah lalu crop PERSEGI, robust untuk berbagai rasio foto
-    (portrait HP maupun landscape webcam laptop). Caranya: hitung ukuran
-    target dari margin independen X/Y (bukan rasio tebakan), lalu kalau
-    ruang di sekitar wajah kurang di satu sisi, GESER dulu titik tengah
-    crop (bukan langsung dikecilin/ditambal hitam) - baru kalau masih
-    kurang juga, ukurannya dikecilkan sedikit.
-    """
+    """Deteksi wajah lalu crop PERSEGI robust untuk berbagai rasio foto."""
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     result = face_detector.process(rgb)
 
@@ -121,21 +123,17 @@ def crop_face(image):
 
     crop_w = bw + 2 * margin_x
     crop_h = bh + 2 * margin_y
-    size = max(crop_w, crop_h)  # target persegi dari margin asli, bukan rasio tebakan
+    size = max(crop_w, crop_h)
     half = size // 2
 
     cx = x + bw // 2
     cy = y + bh // 2
 
-    # Geser dulu titik tengah supaya crop penuh (ukuran "size") muat
-    # di dalam frame, selama frame-nya cukup besar untuk itu.
     if w >= size:
         cx = max(half, min(cx, w - half))
     if h >= size:
         cy = max(half, min(cy, h - half))
 
-    # Baru kalau geser masih belum cukup (mis. frame lebih kecil dari
-    # target, atau wajah kepepet di 2 sisi berlawanan), kecilkan ukuran.
     half_size = min(half, cx, cy, w - cx, h - cy)
 
     x1, y1 = cx - half_size, cy - half_size
@@ -169,7 +167,7 @@ def remove_background(image):
 
 
 # =====================================================
-# RESIZE 510x510 (aman karena input sudah dijamin persegi)
+# RESIZE 510x510
 # =====================================================
 
 def resize_face(image):
@@ -200,15 +198,23 @@ def extract_features(image):
     lbp_ycbcr = extract_lbp_ycbcr(image)
     gabor = extract_gabor(image)
 
+    # Vektor fusi
+    feat_lbp_ycbcr_antro = np.concatenate([lbp_ycbcr, antro10])
+    feat_lbp_ycbcr_gabor = np.concatenate([lbp_ycbcr, gabor])
+
+    # Pemetaan ke masing-masing model
     features["LBP"] = lbp
     features["Antropometri 10 Multi Angle"] = antro10
-    # tetap antro10 sesuai model kamu
     features["Antro Frontal Angry"] = antro10
     features["Antropometri 13 Angry Frontal"] = antro13
     features["Antropometri 22 Angry Frontal"] = antro22
 
-    features["LBP YCbCr + Antropometri"] = np.concatenate([lbp_ycbcr, antro10])
-    features["LBP YCbCr + Gabor"] = np.concatenate([lbp_ycbcr, gabor])
+    features["LBP YCbCr + Antropometri"] = feat_lbp_ycbcr_antro
+    features["LBP YCbCr + Gabor"] = feat_lbp_ycbcr_gabor
+
+    # Fitur untuk model OVA baru
+    features["OVA Antro + LBP YCbCr"] = feat_lbp_ycbcr_antro
+    features["OVA Gabor + LBP YCbCr"] = feat_lbp_ycbcr_gabor
 
     return features
 
@@ -253,7 +259,7 @@ else:
         image = Image.open(camera)
         img = np.array(image)
         image_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        # kamera depan mirror
+        # Kamera depan mirror
         image_bgr = cv2.flip(image_bgr, 1)
 
 
@@ -273,7 +279,7 @@ if image_bgr is not None:
 
     st.caption(f"Square crop: {crop.shape} (dimensi 1 & 2 harus sama)")
 
-    # PREPROCESS
+    # Preprocessing
     crop = remove_background(crop)
     crop = resize_face(crop)
 
@@ -289,13 +295,14 @@ if image_bgr is not None:
         models = load_models()
 
         st.success("Prediksi selesai")
-        st.subheader("Hasil Semua Model")
+        st.subheader("Hasil Semua Model (9 Model)")
 
         names = list(models.keys())
 
+        # Render dalam grid per 3 kolom
         for i in range(0, len(names), 3):
             cols = st.columns(3)
-            for col, name in zip(cols, names[i:i + 3]):
+            for col, name in zip(cols, names[i : i + 3]):
                 with col:
                     result = predict(models[name], features[name])
                     st.metric(label=name, value=result)
