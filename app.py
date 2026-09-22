@@ -33,7 +33,7 @@ face_detector = mp_detection.FaceDetection(
 segmenter = mp_selfie.SelfieSegmentation(model_selection=1)
 
 # =====================================================
-# LOAD MODEL (15 MODEL)
+# LOAD MODEL (19 MODEL)
 # =====================================================
 @st.cache_resource
 def load_models():
@@ -77,7 +77,7 @@ def load_models():
         "scaler": joblib.load("models/OVA_gabor_lbp_ycbcr_scaler.pkl"),
     }
 
-    # --- 6 MODEL BARU DARI KAGGLE EXPERIMENT ---
+    # --- 6 MODEL KAGGLE SEBELUMNYA ---
     models["Antro 10 Multi-Emotion Frontal"] = {
         "model": joblib.load("models/antro10_multi_emotion_frontal_svm.pkl"),
         "scaler": joblib.load("models/antro10_multi_emotion_frontal_scaler.pkl"),
@@ -101,6 +101,24 @@ def load_models():
     models["OVA Antro 22 Multi-Emotion Frontal"] = {
         "model": joblib.load("models/antro22_multi_emotion_frontal_ova_svm.pkl"),
         "scaler": joblib.load("models/antro22_multi_emotion_frontal_ova_scaler.pkl"),
+    }
+
+    # --- 4 MODEL TAMBAHAN TERBARU DARI GAMBAR ---
+    models["Fusi LBP-YCbCr-Gabor Subj-Indep SVM"] = {
+        "model": joblib.load("models/lbp_ycbcr_gabor_subj_indep_svm.pkl"),
+        "scaler": joblib.load("models/lbp_ycbcr_gabor_subj_indep_scaler.pkl"),
+    }
+    models["Fusi LBP-YCbCr-Gabor Subj-Indep OVA"] = {
+        "model": joblib.load("models/lbp_ycbcr_gabor_subj_indep_ova_svm.pkl"),
+        "scaler": joblib.load("models/lbp_ycbcr_gabor_subj_indep_ova_scaler.pkl"),
+    }
+    models["Antro 22 Frontal Subj-Indep SVM"] = {
+        "model": joblib.load("models/antro22_multi_emotion_frontal_subj_indep_svm.pkl"),
+        "scaler": joblib.load("models/antro22_multi_emotion_frontal_subj_indep_scaler.pkl"),
+    }
+    models["Antro 22 Frontal OVA 60:20:20"] = {
+        "model": joblib.load("models/antro22_multi_emotion_frontal_ova_60_20_20_svm.pkl"),
+        "scaler": joblib.load("models/antro22_multi_emotion_frontal_ova_60_20_20_scaler.pkl"),
     }
 
     return models
@@ -217,13 +235,19 @@ def extract_features(image):
     features["OVA Antro + LBP YCbCr"] = feat_lbp_ycbcr_antro
     features["OVA Gabor + LBP YCbCr"] = feat_lbp_ycbcr_gabor
 
-    # Model Baru
+    # Model Kaggle Sebelumnya
     features["Antro 10 Multi-Emotion Frontal"] = antro10
     features["OVA Antro 10 Multi-Emotion Frontal"] = antro10
     features["Antro 13 Multi-Emotion Frontal"] = antro13
     features["OVA Antro 13 Multi-Emotion Frontal"] = antro13
     features["Antro 22 Multi-Emotion Frontal"] = antro22
     features["OVA Antro 22 Multi-Emotion Frontal"] = antro22
+
+    # Model Baru Tambahan dari Gambar
+    features["Fusi LBP-YCbCr-Gabor Subj-Indep SVM"] = feat_lbp_ycbcr_gabor
+    features["Fusi LBP-YCbCr-Gabor Subj-Indep OVA"] = feat_lbp_ycbcr_gabor
+    features["Antro 22 Frontal Subj-Indep SVM"] = antro22
+    features["Antro 22 Frontal OVA 60:20:20"] = antro22
 
     return features
 
@@ -244,7 +268,7 @@ def predict(model_data, feature):
 st.set_page_config(page_title="Ethnicity Classification (Multi-Face)", layout="wide")
 
 st.title("Facial Feature Based Ethnicity Classification")
-st.write("SVM Classification Pipeline - 15 Model Grid Comparison (Support Multi-Face Detection)")
+st.write("SVM Classification Pipeline - 19 Model Grid Comparison (Support Multi-Face Detection)")
 
 option = st.radio("Metode Input", ["Upload Foto", "Ambil Foto"])
 image_bgr = None
@@ -303,14 +327,14 @@ if image_bgr is not None:
             with col_proc:
                 st.image(cv2.cvtColor(clean_face, cv2.COLOR_BGR2RGB), caption=f"Preprocessing (510x510 No BG)", width=220)
 
-            with st.spinner(f"Ekstraksi fitur dan inferensi 15 model untuk Wajah {idx+1}..."):
+            with st.spinner(f"Ekstraksi fitur dan inferensi 19 model untuk Wajah {idx+1}..."):
                 features = extract_features(clean_face)
 
             if features is None:
                 st.error(f"Gagal mendeteksi landmark pada Wajah {idx+1}.")
             else:
                 st.write("---")
-                st.subheader(f"Hasil Prediksi 15 Model (Wajah {idx+1})")
+                st.subheader(f"Hasil Prediksi 19 Model (Wajah {idx+1})")
 
                 # Tampilkan metrik prediksi dalam format 3 kolom
                 for i in range(0, len(names), 3):
